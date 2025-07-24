@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG Signal Viewer & Anomaly Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const ECGViewer = () => {
+            const [ecgData, setEcgData] = useState({ time: [], signal: [], anomalies: [] });
+            const chartRef = useRef(null);
+
+            const fetchECGData = async () => {
+                try {
+                    const response = await fetch('http://localhost:5000/get_ecg', {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    setEcgData(data);
+                } catch (error) {
+                    console.error('Error fetching ECG data:', error.message);
+                    alert('Failed to fetch ECG data: ' + error.message);
+                }
+            };
+
+            const uploadECGFile = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const response = await fetch('http://localhost:5000/upload_ecg', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    setEcgData(data);
+                } catch (error) {
+                    console.error('Error uploading ECG file:', error.message);
+                    alert('Failed to upload ECG file: ' + error.message);
+                }
+            };
+
+            useEffect(() => {
+                fetchECGData(); // Load sample data on start
+            }, []);
+
+            useEffect(() => {
+                if (chartRef.current) chartRef.current.destroy();
+                chartRef.current = new Chart(document.getElementById('ecgChart'), {
+                    type: 'line',
+                    data: {
+                        labels: ecgData.time,
+                        datasets: [
+                            {
+                                label: 'ECG Signal (mV)',
+                                data: ecgData.signal,
+                                borderColor: '#3b82f6',
+                                tension: 0.1,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Anomalies',
+                                data: ecgData.anomalies.map(a => ({ x: ecgData.time[a.index], y: a.value })),
+                                borderColor: '#ef4444',
+                                pointRadius: 5,
+                                pointStyle: 'circle',
+                                showLine: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { title: { display: true, text: 'Time (s)' } },
+                            y: { title: { display: true, text: 'Voltage (mV)' } }
+                        }
+                    }
+                });
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [ecgData]);
+
+            return (
+                <div className="container mx-auto p-4">
+                    <h1 className="text-2xl font-bold mb-4">ECG Signal Viewer & Anomaly Detection</h1>
+                    <div className="mb-4">
+                        <label className="block mb-1">Upload ECG Data (CSV):</label>
+                        <input type="file" accept=".csv" onChange={uploadECGFile} className="p-2 border rounded" />
+                        <button onClick={fetchECGData} className="ml-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Load Sample ECG</button>
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-semibold">ECG Signal</h2>
+                        <canvas id="ecgChart"></canvas>
+                    </div>
+                    <div className="mt-4">
+                        <h2 className="text-xl font-semibold mb-2">Detected Anomalies</h2>
+                        <table className="w-full border-collapse border">
+                            <thead>
+                                <tr className="bg-gray-200">
+                                    <th className="border p-2">Time (s)</th>
+                                    <th className="border p-2">Voltage (mV)</th>
+                                    <th className="border p-2">Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {ecgData.anomalies.map((anomaly, index) => (
+                                    <tr key={index} className="hover:bg-gray-100">
+                                        <td className="border p-2">{ecgData.time[anomaly.index]}</td>
+                                        <td className="border p-2">{anomaly.value.toFixed(2)}</td>
+                                        <td className="border p-2">{anomaly.type}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<ECGViewer />, document.getElementById('root'));
+    </script>
+</body>
+</html>
